@@ -1,0 +1,572 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+#root {
+  width: 100%;
+  max-width: 1100px;
+}
+
+/* === Menu === */
+.menu {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.menu h1 {
+  font-size: 2.5rem;
+  margin-bottom: 16px;
+  color: #e94560;
+}
+
+.subtitle {
+  color: #aaa;
+  margin-bottom: 32px;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+button {
+  background: #e94560;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === Board with labels === */
+.board-with-labels {
+  display: grid;
+  grid-template-columns: 24px auto;
+  grid-template-rows: auto 24px;
+  gap: 0;
+}
+
+.rank-labels {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  height: min(80vw, 560px);
+}
+
+.file-labels {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: min(80vw, 560px);
+}
+
+.rank-label,
+.file-label {
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 600;
+}
+
+/* === Board === */
+.board {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: min(80vw, 560px);
+  height: min(80vw, 560px);
+  border: 4px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.square.light {
+  background: #f0d9b5;
+}
+
+.square.dark {
+  background: #b58863;
+}
+
+.square.selected {
+  background: #f7ec75 !important;
+}
+
+.square.valid-move {
+  background: #9bc49b !important;
+}
+
+.square.last-move {
+  box-shadow: inset 0 0 0 3px #ffd700;
+}
+
+.square.deduction-selected {
+  box-shadow: inset 0 0 0 3px #e94560;
+}
+
+.dot {
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: rgba(0, 128, 0, 0.3);
+}
+
+.piece {
+  font-size: min(8vw, 42px);
+  line-height: 1;
+}
+
+.piece.white {
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
+}
+
+.piece.black {
+  color: #222;
+  text-shadow: 0 0 2px #888;
+}
+
+.piece.revealed {
+  animation: reveal 0.3s ease;
+}
+
+.piece-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.piece-wrapper.revealed {
+  animation: reveal 0.3s ease;
+}
+
+.piece-wrapper.white .piece {
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
+}
+
+.piece-wrapper.black .piece {
+  color: #222;
+  text-shadow: 0 0 2px #888;
+}
+
+.piece-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: min(2vw, 10px);
+  font-weight: bold;
+  background: rgba(233, 69, 96, 0.9);
+  color: white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+@keyframes reveal {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Numbered hidden piece */
+.piece-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 65%;
+  height: 65%;
+  border-radius: 50%;
+  font-size: min(3.5vw, 18px);
+  font-weight: bold;
+  line-height: 1;
+}
+
+.piece-number.white {
+  background: rgba(255, 255, 255, 0.7);
+  color: #333;
+  border: 2px solid #999;
+}
+
+.piece-number.black {
+  background: rgba(40, 40, 40, 0.75);
+  color: #eee;
+  border: 2px solid #666;
+}
+
+/* === Setup === */
+.setup-container {
+  padding: 20px;
+}
+
+.setup-container h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.setup-layout {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.pool h3 {
+  font-size: 0.9rem;
+  color: #aaa;
+  margin-bottom: 8px;
+}
+
+.pool-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #2a2a4a;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.pool-item.selected {
+  border-color: #e94560;
+}
+
+.pool-item.empty {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pool-item .piece {
+  font-size: 28px;
+}
+
+.pool-item .count {
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.ready-btn {
+  margin-top: 8px;
+}
+
+/* === Game === */
+.game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 560px;
+  align-items: center;
+}
+
+.game-header h2 {
+  font-size: 1.2rem;
+}
+
+.history-count {
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.game-layout {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* === Handoff === */
+.handoff-screen {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.handoff-screen h2 {
+  font-size: 2rem;
+  margin-bottom: 16px;
+}
+
+.handoff-screen p {
+  color: #aaa;
+  margin-bottom: 32px;
+}
+
+/* === Deduction Panel === */
+.deduction-panel {
+  background: #2a2a4a;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: min(80vw, 560px);
+  overflow-y: auto;
+}
+
+.deduction-panel.collapsed {
+  min-width: auto;
+  padding: 8px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.panel-header h3 {
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #888;
+  cursor: pointer;
+}
+
+.debug-toggle input {
+  cursor: pointer;
+}
+
+.toggle-btn {
+  background: #3a3a5a;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+.deduction-table tr.deduction-mismatch {
+  background: rgba(233, 69, 96, 0.3) !important;
+}
+
+.real-cell {
+  text-align: center;
+}
+
+.deduction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.deduction-table th {
+  text-align: left;
+  padding: 4px 6px;
+  color: #888;
+  font-weight: 600;
+  border-bottom: 1px solid #3a3a5a;
+}
+
+.deduction-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #333;
+}
+
+.deduction-table tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.deduction-table tr:hover {
+  background: #333355;
+}
+
+.deduction-table tr.selected-row {
+  background: #3a2244;
+}
+
+.deduction-table tr.captured {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.num-cell {
+  font-weight: bold;
+  text-align: center;
+  width: 28px;
+}
+
+.types-cell {
+  width: 120px;
+}
+
+.types-list {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.type-icon {
+  font-size: 16px;
+  opacity: 0.3;
+}
+
+.type-icon.possible {
+  opacity: 1;
+}
+
+.captured-mark {
+  color: #666;
+}
+
+.status-cell {
+  font-size: 0.75rem;
+  color: #aaa;
+  width: 50px;
+}
+
+.deduction-detail {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #3a3a5a;
+}
+
+.deduction-detail h4 {
+  font-size: 0.85rem;
+  color: #ccc;
+  margin-bottom: 6px;
+}
+
+.detail-history {
+  font-size: 0.8rem;
+  color: #ccc;
+  line-height: 1.8;
+}
+
+.history-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.move-num {
+  color: #666;
+  min-width: 20px;
+}
+
+.capture-mark {
+  color: #e94560;
+  font-size: 0.75rem;
+}
+
+.promo-mark {
+  color: #ffd700;
+}
+
+.muted {
+  color: #666;
+}
+
+/* === Promotion === */
+.promotion-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #2a2a4a;
+  padding: 24px;
+  border-radius: 12px;
+  text-align: center;
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.promotion-dialog h3 {
+  margin-bottom: 16px;
+}
+
+.promotion-options {
+  display: flex;
+  gap: 12px;
+}
+
+.promotion-options button {
+  background: #3a3a5a;
+  padding: 12px 16px;
+  font-size: 32px;
+}
+
+/* === Game Over === */
+.game-over {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.game-over h2 {
+  font-size: 2.5rem;
+  color: #e94560;
+  margin-bottom: 16px;
+}
+
+.game-over p {
+  color: #aaa;
+  margin-bottom: 32px;
+}
