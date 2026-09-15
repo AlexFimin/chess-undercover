@@ -48,7 +48,11 @@ export function setPiece(board: Board, pos: Position, piece: Piece | undefined):
 }
 
 export function cloneBoard(board: Board): Board {
-  return new Map(board);
+  const cloned = new Map<string, Piece>();
+  for (const [pos, piece] of board) {
+    cloned.set(pos, { ...piece });
+  }
+  return cloned;
 }
 
 export function movePiece(

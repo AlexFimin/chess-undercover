@@ -44,3 +44,38 @@ export const STANDARD_PIECES: PieceType[] = [
   'rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook',
   'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn',
 ];
+
+// === Wire protocol types ===
+
+export interface PublicPiece {
+  id: string;
+  type: PieceType | null;
+  owner: Color;
+  position: Position;
+  hasMoved: boolean;
+}
+
+export interface WireMove {
+  from: Position;
+  to: Position;
+  pieceId: string;
+  owner: Color;
+  isCapture: boolean;
+  hadMoved: boolean;
+  capturedPieceId?: string;
+  capturedPieceType?: PieceType;
+  promotedTo?: PieceType;
+}
+
+export interface GameStartedMsg {
+  myPieces: Piece[];
+  opponentPieces: PublicPiece[];
+  pieceNumbers: Record<string, number>;
+  myColor: Color;
+}
+
+export interface MoveResultMsg {
+  move: WireMove;
+  currentPlayer: Color;
+  winner: Color | null;
+}

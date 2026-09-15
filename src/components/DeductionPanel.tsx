@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Piece, Color, Board as BoardType, PieceType, Move } from '../types';
+import type { Piece, Color, PieceType, WireMove } from '../types';
 import { PIECE_SYMBOLS } from '../types';
 
 interface DeductionPanelProps {
@@ -8,8 +8,7 @@ interface DeductionPanelProps {
   pieceNumbers: Map<string, number>;
   possibleTypes: Map<string, Set<PieceType>>;
   capturedPieceIds: Set<string>;
-  board: BoardType;
-  history: Move[];
+  history: WireMove[];
   selectedPieceId: string | null;
   onSelectPiece: (id: string) => void;
 }
@@ -27,7 +26,6 @@ export function DeductionPanel({
   onSelectPiece,
 }: DeductionPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
 
   const sortedPieces = [...opponentPieces].sort((a, b) => {
     const na = pieceNumbers.get(a.id) ?? 99;
@@ -35,7 +33,7 @@ export function DeductionPanel({
     return na - nb;
   });
 
-  function pieceMoves(pieceId: string): Move[] {
+  function pieceMoves(pieceId: string): WireMove[] {
     return history.filter((m) => m.pieceId === pieceId);
   }
 
@@ -54,14 +52,6 @@ export function DeductionPanel({
       <div className="panel-header">
         <h3>Дедукция ({opponentColor === 'white' ? 'Белые' : 'Чёрные'})</h3>
         <div className="panel-controls">
-          <label className="debug-toggle">
-            <input
-              type="checkbox"
-              checked={debugMode}
-              onChange={(e) => setDebugMode(e.target.checked)}
-            />
-            <span>debug</span>
-          </label>
           <button className="toggle-btn" onClick={() => setCollapsed(true)}>
             ▼
           </button>
@@ -74,7 +64,6 @@ export function DeductionPanel({
             <th>№</th>
             <th>Типы</th>
             <th>Статус</th>
-            {debugMode && <th>Реал</th>}
           </tr>
         </thead>
         <tbody>
@@ -86,13 +75,11 @@ export function DeductionPanel({
             const isSelected = selectedPieceId === piece.id;
 
             const deducedType = isRevealed ? [...types!][0] : null;
-            const realType = piece.type;
-            const mismatch = debugMode && deducedType && deducedType !== realType;
 
             return (
               <tr
                 key={piece.id}
-                className={`${captured ? 'captured' : ''} ${isSelected ? 'selected-row' : ''} ${mismatch ? 'deduction-mismatch' : ''}`}
+                className={`${captured ? 'captured' : ''} ${isSelected ? 'selected-row' : ''}`}
                 onClick={() => onSelectPiece(piece.id)}
               >
                 <td className="num-cell">{num}</td>
@@ -120,11 +107,6 @@ export function DeductionPanel({
                 <td className="status-cell">
                   {captured ? 'взят' : isRevealed ? 'вскрыт' : 'скрыт'}
                 </td>
-                {debugMode && (
-                  <td className="real-cell">
-                    <span className={`piece ${opponentColor}`}>{PIECE_SYMBOLS[opponentColor][realType]}</span>
-                  </td>
-                )}
               </tr>
             );
           })}
@@ -149,7 +131,7 @@ export function DeductionPanel({
                   <div key={i} className="history-row">
                     <span className="move-num">{i + 1}.</span>
                     <span>{m.from} → {m.to}</span>
-                    {m.capturedPieceId && <span className="capture-mark"> взятие</span>}
+                    {m.isCapture && <span className="capture-mark"> взятие</span>}
                     {m.promotedTo && <span className="promo-mark"> →{PIECE_SYMBOLS[opponentColor][m.promotedTo]}</span>}
                   </div>
                 ))
