@@ -1,4 +1,7 @@
 import { createServer } from 'http';
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import type { Position, PieceType } from '../src/types';
 import {
@@ -21,7 +24,17 @@ import {
   pieceNumbersToRecord,
 } from './game';
 
-const httpServer = createServer();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distPath = path.join(__dirname, '..', 'dist');
+
+const app = express();
+app.use(express.static(distPath));
+// SPA fallback: любые маршруты отдаём index.html
+app.use((req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
+const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
@@ -155,7 +168,7 @@ function handleLeave(socketId: string) {
   console.log(`[leave] room ${room.code} removed`);
 }
 
-const PORT = 3001;
+const PORT = parseInt(process.env.PORT ?? '3001', 10);
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
