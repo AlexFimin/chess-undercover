@@ -1,8 +1,6 @@
-import type { Piece, Color, Position, PieceType, Board } from '../src/types';
-import { ALL_PIECE_TYPES } from '../src/types';
-import { getValidMoves, filterPossibleTypes, applyCountDeduction } from '../src/game/moves';
+import type { Piece, Color, Position, PieceType, Board, PublicPiece, WireMove } from '../src/types';
+import { getValidMoves } from '../src/game/moves';
 import { cloneBoard, movePiece, allPieces } from '../src/game/board';
-import type { PublicPiece, WireMove } from '../src/types';
 
 function assignPieceNumbers(pieces: Piece[]): Map<string, number> {
   const owner = pieces[0]?.owner;
@@ -27,6 +25,7 @@ export interface ServerGameState {
   board: Board;
   currentPlayer: Color;
   turn: number;
+  history: WireMove[];
   pieceNumbers: Map<string, number>;
   capturedPieceIds: Set<string>;
   winner: Color | null;
@@ -46,6 +45,7 @@ export function createGameState(whitePieces: Piece[], blackPieces: Piece[]): Ser
     board,
     currentPlayer: 'white',
     turn: 0,
+    history: [],
     pieceNumbers,
     capturedPieceIds: new Set(),
     winner: null,
@@ -73,16 +73,16 @@ export function validateMove(
   to: Position,
   playerColor: Color,
 ): { valid: boolean; needsPromotion: boolean; error?: string } {
-  if (state.winner) return { valid: false, needsPromotion: false, error: 'Game is over' };
-  if (state.pendingPromotion) return { valid: false, needsPromotion: false, error: 'Promotion pending' };
-  if (state.currentPlayer !== playerColor) return { valid: false, needsPromotion: false, error: 'Not your turn' };
+  if (state.winner) return { valid: false, needsPromotion: false, error: 'Игра окончена' };
+  if (state.pendingPromotion) return { valid: false, needsPromotion: false, error: 'Ожидаю выбор фигуры превращения' };
+  if (state.currentPlayer !== playerColor) return { valid: false, needsPromotion: false, error: 'Сейчас не ваш ход' };
 
   const piece = state.board.get(from);
-  if (!piece) return { valid: false, needsPromotion: false, error: 'No piece at ' + from };
-  if (piece.owner !== playerColor) return { valid: false, needsPromotion: false, error: 'Not your piece' };
+  if (!piece) return { valid: false, needsPromotion: false, error: 'Нет фигуры на ' + from };
+  if (piece.owner !== playerColor) return { valid: false, needsPromotion: false, error: 'Это не ваша фигура' };
 
   const validMoves = getValidMoves(piece, state.board);
-  if (!validMoves.includes(to)) return { valid: false, needsPromotion: false, error: 'Invalid move' };
+  if (!validMoves.includes(to)) return { valid: false, needsPromotion: false, error: 'Недопустимый ход' };
 
   const promoRank = piece.owner === 'white' ? 8 : 1;
   if (piece.type === 'pawn' && parseInt(to[1], 10) === promoRank) {
@@ -128,7 +128,7 @@ export function applyMove(
   state.currentPlayer = winner ? state.currentPlayer : (state.currentPlayer === 'white' ? 'black' : 'white');
   state.pendingPromotion = null;
 
-  return {
+  const wireMove: WireMove = {
     from,
     to,
     pieceId: movingPiece.id,
@@ -139,6 +139,9 @@ export function applyMove(
     capturedPieceType: captured?.type,
     promotedTo,
   };
+  state.history = [...state.history, wireMove];
+
+  return wireMove;
 }
 
 export function pieceNumbersToRecord(map: Map<string, number>): Record<string, number> {

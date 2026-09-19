@@ -1,4 +1,4 @@
-import type { Board, Piece, Position, PieceType, Color, Move } from '../types';
+import type { Board, Piece, Position, PieceType, Color } from '../types';
 import { ALL_PIECE_TYPES } from '../types';
 import { tryShift, rankOf, getPiece } from './board';
 
@@ -225,7 +225,7 @@ export function applyCountDeduction(
   possibleTypes: Map<string, Set<PieceType>>,
   opponentPieces: Piece[],
   capturedPieceIds: Set<string>,
-  history: Move[],
+  history: Array<{ pieceId: string; promotedTo?: PieceType }>,
   opponentColor: Color,
 ): Map<string, Set<PieceType>> {
   const maxCounts: Record<PieceType, number> = { ...BASE_MAX_COUNTS };

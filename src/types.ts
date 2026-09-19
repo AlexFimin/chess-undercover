@@ -79,3 +79,19 @@ export interface MoveResultMsg {
   currentPlayer: Color;
   winner: Color | null;
 }
+
+export interface GameRestoredMsg {
+  phase: 'waiting' | 'setup' | 'playing';
+  code: string;
+  myColor: Color;
+  myPieces?: Piece[];
+  opponentPieces?: PublicPiece[];
+  pieceNumbers?: Record<string, number>;
+  currentPlayer?: Color;
+  winner?: Color | null;
+  history?: WireMove[];
+  capturedPieceIds?: string[];
+  pendingPromotion?: { pieceId: string; from: Position; to: Position } | null;
+  // Момент (epoch ms), до которого у отключённого соперника действует grace-окно
+  opponentGraceUntil?: number | null;
+}

@@ -1,98 +1,227 @@
-import { useState, useRef, useEffect } from 'react';
-import type { Socket } from 'socket.io-client';
-import type { Color, Piece, GameStartedMsg } from './types';
+﻿import { useState, useEffect } from 'react';
+import type { Color, Piece, GameStartedMsg, GameRestoredMsg } from './types';
 import { createSocket } from './net/socket';
 import { Lobby } from './components/Lobby';
 import { Setup } from './components/Setup';
-import { GameView } from './components/GameView';
+import { GameView, type RestoreData } from './components/GameView';
+
+// Р•РґРёРЅСЃС‚РІРµРЅРЅС‹Р№ СЃРѕРєРµС‚ РЅР° РІСЃС‘ РїСЂРёР»РѕР¶РµРЅРёРµ (СЃРѕР·РґР°С‘С‚СЃСЏ РѕРґРёРЅ СЂР°Р· РїСЂРё Р·Р°РіСЂСѓР·РєРµ РјРѕРґСѓР»СЏ)
+const socket = createSocket();
 
 type Phase = 'menu' | 'waiting' | 'setup' | 'playing' | 'opponent_left';
 
+interface StoredSession {
+  code: string;
+  token: string;
+}
+
+const SESSION_KEY = 'chess-undercover:session';
+
+function loadSession(): StoredSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredSession | null;
+    if (parsed && typeof parsed.code === 'string' && typeof parsed.token === 'string') {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: StoredSession): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // localStorage РЅРµРґРѕСЃС‚СѓРїРµРЅ вЂ” СЃРµСЃСЃРёСЏ РїСЂРѕСЃС‚Рѕ РЅРµ СЃРѕС…СЂР°РЅРёС‚СЃСЏ
+  }
+}
+
+function clearSession(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // РёРіРЅРѕСЂРёСЂСѓРµРј
+  }
+}
+
+// РљРѕРїРёСЂРѕРІР°РЅРёРµ С‚РµРєСЃС‚Р° СЃ fallback РґР»СЏ РЅРµР±РµР·РѕРїР°СЃРЅРѕРіРѕ РєРѕРЅС‚РµРєСЃС‚Р° (http)
+function copyText(text: string): boolean {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      void navigator.clipboard.writeText(text);
+      return true;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
-  const socketRef = useRef<Socket | null>(null);
   const [phase, setPhase] = useState<Phase>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [myColor, setMyColor] = useState<Color>('white');
   const [gameData, setGameData] = useState<GameStartedMsg | null>(null);
+  const [restoreData, setRestoreData] = useState<RestoreData | null>(null);
   const [error, setError] = useState('');
-
-  function getSocket(): Socket {
-    if (!socketRef.current) {
-      socketRef.current = createSocket();
+  const [copied, setCopied] = useState(false);
+  const [savedSession, setSavedSession] = useState<StoredSession | null>(() => loadSession());
+  // РљРѕРґ РєРѕРјРЅР°С‚С‹ РёР· СЃСЃС‹Р»РєРё-РїСЂРёРіР»Р°С€РµРЅРёСЏ (?room=XXXXXX)
+  const [initialRoom] = useState<string | null>(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get('room');
+      return param ? param.toUpperCase().slice(0, 6) : null;
+    } catch {
+      return null;
     }
-    return socketRef.current;
-  }
+  });
 
   useEffect(() => {
-    const sock = getSocket();
-
-    sock.on('room_created', (data: { code: string; color: Color }) => {
+    socket.on('room_created', (data: { code: string; color: Color; token: string }) => {
+      const session = { code: data.code, token: data.token };
+      saveSession(session);
+      setSavedSession(session);
       setRoomCode(data.code);
       setMyColor(data.color);
+      setRestoreData(null);
       setPhase('waiting');
     });
 
-    sock.on('room_joined', (data: { code: string; color: Color }) => {
+    socket.on('room_joined', (data: { code: string; color: Color; token: string }) => {
+      const session = { code: data.code, token: data.token };
+      saveSession(session);
+      setSavedSession(session);
       setRoomCode(data.code);
       setMyColor(data.color);
+      setRestoreData(null);
       setPhase('waiting');
     });
 
-    sock.on('waiting_for_opponent', () => {
+    socket.on('waiting_for_opponent', () => {
       setPhase('waiting');
     });
 
-    sock.on('opponent_joined', () => {
+    socket.on('opponent_joined', () => {
       setPhase('setup');
     });
 
-    sock.on('game_started', (data: GameStartedMsg) => {
+    socket.on('game_started', (data: GameStartedMsg) => {
       setGameData(data);
+      setRestoreData(null);
       setPhase('playing');
     });
 
-    sock.on('opponent_left', () => {
+    socket.on('reconnect_ok', (msg: GameRestoredMsg) => {
+      setRoomCode(msg.code);
+      setMyColor(msg.myColor);
+      setError('');
+      if (msg.phase === 'waiting') {
+        setGameData(null);
+        setRestoreData(null);
+        setPhase('waiting');
+      } else if (msg.phase === 'setup') {
+        setGameData(null);
+        setRestoreData(null);
+        setPhase('setup');
+      } else {
+        const gd: GameStartedMsg = {
+          myPieces: msg.myPieces ?? [],
+          opponentPieces: msg.opponentPieces ?? [],
+          pieceNumbers: msg.pieceNumbers ?? {},
+          myColor: msg.myColor,
+        };
+        const rd: RestoreData = {
+          myPieces: msg.myPieces ?? [],
+          opponentPieces: msg.opponentPieces ?? [],
+          pieceNumbers: msg.pieceNumbers ?? {},
+          currentPlayer: msg.currentPlayer ?? 'white',
+          winner: msg.winner ?? null,
+          history: msg.history ?? [],
+          capturedPieceIds: msg.capturedPieceIds ?? [],
+          pendingPromotion: msg.pendingPromotion ?? null,
+          opponentGraceUntil: msg.opponentGraceUntil ?? null,
+        };
+        setGameData(gd);
+        setRestoreData(rd);
+        setPhase('playing');
+      }
+    });
+
+    socket.on('reconnect_failed', (data: { message: string }) => {
+      clearSession();
+      setSavedSession(null);
+      setError(data.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёРіСЂСѓ');
+      setTimeout(() => setError(''), 5000);
+    });
+
+    socket.on('opponent_left', () => {
+      clearSession();
+      setSavedSession(null);
       setPhase('opponent_left');
     });
 
-    sock.on('error', (data: { message: string }) => {
+    socket.on('error', (data: { message: string }) => {
       setError(data.message);
       setTimeout(() => setError(''), 3000);
     });
 
     return () => {
-      sock.removeAllListeners();
+      socket.removeAllListeners();
     };
   }, []);
 
   function handleCreateRoom() {
     setError('');
-    getSocket().emit('create_room');
+    socket.emit('create_room');
   }
 
   function handleJoinRoom(code: string) {
     setError('');
-    getSocket().emit('join_room', { code });
+    socket.emit('join_room', { code });
+  }
+
+  function handleReconnect() {
+    if (!savedSession) return;
+    setError('');
+    socket.emit('reconnect', { code: savedSession.code, token: savedSession.token });
   }
 
   function handleSetupReady(pieces: Piece[]) {
-    getSocket().emit('submit_setup', { pieces });
+    socket.emit('submit_setup', { pieces });
     setPhase('waiting');
   }
 
   function handleGameEnd() {
-    if (socketRef.current) {
-      socketRef.current.emit('leave_room');
-    }
+    clearSession();
+    setSavedSession(null);
+    socket.emit('leave_room');
     setPhase('menu');
     setGameData(null);
+    setRestoreData(null);
     setRoomCode('');
   }
 
   if (phase === 'menu') {
     return (
       <>
-        <Lobby onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} />
+        <Lobby
+          onCreateRoom={handleCreateRoom}
+          onJoinRoom={handleJoinRoom}
+          onReconnect={savedSession ? handleReconnect : null}
+          reconnectCode={savedSession?.code}
+          initialRoom={initialRoom}
+        />
         {error && <div className="error-toast">{error}</div>}
       </>
     );
@@ -101,10 +230,21 @@ export default function App() {
   if (phase === 'waiting') {
     return (
       <div className="handoff-screen">
-        <h2>Ожидание соперника</h2>
-        <p>Код комнаты:</p>
+        <h2>РћР¶РёРґР°РЅРёРµ СЃРѕРїРµСЂРЅРёРєР°</h2>
+        <p>РљРѕРґ РєРѕРјРЅР°С‚С‹:</p>
         <div className="room-code-display">{roomCode}</div>
-        <p className="muted">Подождите, пока соперник подключится...</p>
+        <button
+          className="copy-link-btn"
+          onClick={() => {
+            if (copyText(`${window.location.origin}/?room=${roomCode}`)) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }
+          }}
+        >
+          {copied ? 'РЎСЃС‹Р»РєР° СЃРєРѕРїРёСЂРѕРІР°РЅР°!' : 'РЎРєРѕРїРёСЂРѕРІР°С‚СЊ СЃСЃС‹Р»РєСѓ-РїСЂРёРіР»Р°С€РµРЅРёРµ'}
+        </button>
+        <p className="muted">РџРѕРґРѕР¶РґРёС‚Рµ, РїРѕРєР° СЃРѕРїРµСЂРЅРёРє РїРѕРґРєР»СЋС‡РёС‚СЃСЏ...</p>
         {error && <div className="error-toast">{error}</div>}
       </div>
     );
@@ -115,7 +255,7 @@ export default function App() {
       <>
         <Setup
           color={myColor}
-          title={`Расстановка ${myColor === 'white' ? 'белых' : 'чёрных'}`}
+          title={`Р Р°СЃСЃС‚Р°РЅРѕРІРєР° ${myColor === 'white' ? 'Р±РµР»С‹С…' : 'С‡С‘СЂРЅС‹С…'}`}
           onReady={handleSetupReady}
         />
         {error && <div className="error-toast">{error}</div>}
@@ -127,8 +267,10 @@ export default function App() {
     return (
       <>
         <GameView
+          key={roomCode}
           gameData={gameData}
-          socket={getSocket()}
+          restore={restoreData}
+          socket={socket}
           onGameEnd={handleGameEnd}
         />
         {error && <div className="error-toast">{error}</div>}
@@ -139,8 +281,8 @@ export default function App() {
   if (phase === 'opponent_left') {
     return (
       <div className="handoff-screen">
-        <h2>Соперник покинул игру</h2>
-        <button onClick={handleGameEnd}>В меню</button>
+        <h2>РЎРѕРїРµСЂРЅРёРє РїРѕРєРёРЅСѓР» РёРіСЂСѓ</h2>
+        <button onClick={handleGameEnd}>Р’ РјРµРЅСЋ</button>
       </div>
     );
   }

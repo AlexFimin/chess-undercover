@@ -3,7 +3,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
-import type { Position, PieceType } from '../src/types';
+import type { Position, PieceType, GameRestoredMsg } from '../src/types';
 import {
   createRoom,
   joinRoom,
@@ -23,6 +23,9 @@ import {
   applyMove,
   pieceNumbersToRecord,
 } from './game';
+
+// Grace-окно на восстановление после отключения
+const GRACE_MS = 5 * 60 * 1000;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, '..', 'dist');
@@ -45,7 +48,11 @@ io.on('connection', (socket) => {
   socket.on('create_room', () => {
     const room = createRoom(socket.id);
     socket.join(room.code);
-    socket.emit('room_created', { code: room.code, color: 'white' });
+    socket.emit('room_created', {
+      code: room.code,
+      color: 'white',
+      token: room.players[0].token,
+    });
     socket.emit('waiting_for_opponent');
     console.log(`[create_room] ${room.code} by ${socket.id}`);
   });
@@ -56,10 +63,82 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Комната не найдена или заполнена' });
       return;
     }
+    const player = room.players[room.players.length - 1];
     socket.join(room.code);
-    socket.emit('room_joined', { code: room.code, color: 'black' });
+    socket.emit('room_joined', {
+      code: room.code,
+      color: 'black',
+      token: player.token,
+    });
     io.to(room.code).emit('opponent_joined');
     console.log(`[join_room] ${socket.id} joined ${room.code}`);
+  });
+
+  // Восстановление сессии по коду комнаты и секретному токену
+  socket.on('reconnect', (data: { code: string; token: string }) => {
+    const room = getRoom(data.code);
+    if (!room) {
+      socket.emit('reconnect_failed', { message: 'Комната не найдена или время восстановления истекло' });
+      return;
+    }
+    const player = room.players.find((p) => p.token === data.token);
+    if (!player) {
+      socket.emit('reconnect_failed', { message: 'Сессия недействительна' });
+      return;
+    }
+
+    // Отвязываем старый сокет (игрок открыл игру в новой вкладке)
+    if (player.socketId && player.socketId !== socket.id) {
+      io.sockets.sockets.get(player.socketId)?.disconnect(true);
+    }
+    if (player.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = null;
+    }
+    player.socketId = socket.id;
+    socket.join(room.code);
+
+    const opponent = room.players.find((p) => p !== player);
+    const opponentDead = !!opponent && opponent.socketId === null && opponent.disconnectTimer === null;
+
+    if (opponentDead) {
+      socket.emit('reconnect_failed', { message: 'Соперник не вернулся в игру' });
+      removeRoom(room.code);
+      return;
+    }
+
+    if (opponent?.socketId) {
+      io.to(opponent.socketId).emit('opponent_reconnected');
+    }
+
+    const msg: GameRestoredMsg = {
+      phase: 'waiting',
+      code: room.code,
+      myColor: player.color,
+    };
+
+    if (room.game) {
+      msg.phase = 'playing';
+      msg.myPieces = getMyPieces(room.game.board, player.color);
+      msg.opponentPieces = getPublicPieces(room.game.board, player.color === 'white' ? 'black' : 'white');
+      msg.pieceNumbers = pieceNumbersToRecord(room.game.pieceNumbers);
+      msg.currentPlayer = room.game.currentPlayer;
+      msg.winner = room.game.winner;
+      msg.history = room.game.history;
+      msg.capturedPieceIds = [...room.game.capturedPieceIds];
+      msg.pendingPromotion = room.game.pendingPromotion;
+    } else if (room.players.length === 2) {
+      // Игра ещё не началась: ждали расстановку соперника или свою
+      msg.phase = player.setup ? 'waiting' : 'setup';
+    }
+
+    // Если соперник сейчас отключён — передаём его grace-статус
+    if (opponent && opponent.socketId === null && opponent.graceUntil !== null) {
+      msg.opponentGraceUntil = opponent.graceUntil;
+    }
+
+    socket.emit('reconnect_ok', msg);
+    console.log(`[reconnect] ${socket.id} → room ${room.code} (${player.color})`);
   });
 
   socket.on('submit_setup', (data: { pieces: { id: string; type: PieceType; owner: string; position: Position; hasMoved: boolean }[] }) => {
@@ -80,7 +159,7 @@ io.on('connection', (socket) => {
       for (const p of room.players) {
         const myPieces = getMyPieces(room.game.board, p.color);
         const opponentPieces = getPublicPieces(room.game.board, p.color === 'white' ? 'black' : 'white');
-        io.to(p.socketId).emit('game_started', {
+        io.to(p.socketId!).emit('game_started', {
           myPieces,
           opponentPieces,
           pieceNumbers: pieceNumbersToRecord(room.game.pieceNumbers),
@@ -129,9 +208,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('choose_promotion', (data: { promotedTo: PieceType }) => {
+    const player = getPlayer(socket.id);
     const room = getRoomBySocket(socket.id);
-    if (!room || !room.game || !room.game.pendingPromotion) {
+    if (!player || !room || !room.game || !room.game.pendingPromotion) {
       socket.emit('error', { message: 'Нет ожидающего превращения' });
+      return;
+    }
+    if (room.game.currentPlayer !== player.color) {
+      socket.emit('error', { message: 'Сейчас не ваш ход' });
       return;
     }
 
@@ -148,20 +232,50 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave_room', () => {
-    handleLeave(socket.id);
+    endRoom(socket.id);
   });
 
   socket.on('disconnect', () => {
-    console.log(`[disconnect] ${socket.id}`);
-    handleLeave(socket.id);
+    const room = getRoomBySocket(socket.id);
+    if (!room) return;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+
+    player.socketId = null;
+
+    // Grace-окно: даём игроку время вернуться
+    player.graceUntil = Date.now() + GRACE_MS;
+    player.disconnectTimer = setTimeout(() => {
+      player.disconnectTimer = null;
+      const opponent = room.players.find((p) => p !== player);
+
+      if (opponent?.socketId) {
+        // Соперник на месте — сообщаем и завершаем игру
+        io.to(opponent.socketId).emit('opponent_left');
+        removeRoom(room.code);
+      } else if (!room.players.some((p) => p.socketId !== null || p.disconnectTimer !== null)) {
+        // Никого не осталось, grace-окна исчерпаны — убираем комнату
+        removeRoom(room.code);
+      }
+      // Иначе: соперник тоже отключён, его grace-окно ещё активно — ждём его
+    }, GRACE_MS);
+
+    const opponent = room.players.find((p) => p !== player);
+    if (opponent?.socketId) {
+      io.to(opponent.socketId).emit('opponent_disconnected', {
+        graceUntil: Date.now() + GRACE_MS,
+      });
+    }
+
+    console.log(`[disconnect] ${socket.id} room ${room.code} — grace ${GRACE_MS / 60000} мин`);
   });
 });
 
-function handleLeave(socketId: string) {
+function endRoom(socketId: string) {
   const room = getRoomBySocket(socketId);
   if (!room) return;
   const opponent = getOpponent(socketId);
-  if (opponent) {
+  if (opponent?.socketId) {
     io.to(opponent.socketId).emit('opponent_left');
   }
   removeRoom(room.code);

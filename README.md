@@ -49,9 +49,13 @@
 
 ### Wire-протокол (Socket.IO)
 
-**Клиент → Сервер:** `create_room`, `join_room`, `submit_setup`, `make_move`, `choose_promotion`, `leave_room`
+**Клиент → Сервер:** `create_room`, `join_room`, `reconnect`, `submit_setup`, `make_move`, `choose_promotion`, `leave_room`
 
-**Сервер → Клиент:** `room_created`, `room_joined`, `waiting_for_opponent`, `opponent_joined`, `game_started`, `move_result`, `promotion_request`, `opponent_left`, `error`
+**Сервер → Клиент:** `room_created`, `room_joined`, `waiting_for_opponent`, `opponent_joined`, `reconnect_ok`, `reconnect_failed`, `game_started`, `move_result`, `promotion_request`, `opponent_disconnected`, `opponent_reconnected`, `opponent_left`, `error`
+
+### Восстановление сессии
+
+При создании/подключении к комнате сервер выдаёт секретный player-токен, который клиент хранит в `localStorage`. При обрыве соединения комната живёт ещё **5 минут** (grace-окно): соперник видит баннер с обратным отсчётом, а вернувшийся игрок может восстановиться кнопкой «Вернуться в игру» — сервер пришлёт снапшот позиции и историю ходов, а клиент пересчитает дедукцию локально.
 
 ## Стек
 
@@ -127,8 +131,12 @@ npm start         # Запускает сервер, раздаёт dist/ + WebS
 
 ## Дальнейшие планы
 
-- [ ] Деплой на VPS (Selectel) с PM2
+- [x] Деплой на VPS (Selectel) с PM2
+- [x] Восстановление сессии при обрыве связи (grace-окно 5 минут)
 - [ ] Домен + SSL-сертификат (Let's Encrypt)
-- [ ] Реконнект при обрыве связи (сохранение сессии)
 - [ ] Таймеры ходов, история партий
 - [ ] Адаптация правил: ограничение на расстановку, штрафы за неверную дедукцию
+
+## Лицензия
+
+Проект распространяется по лицензии [MIT](./LICENSE). © 2026 Фимин Александр

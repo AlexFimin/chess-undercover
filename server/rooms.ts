@@ -1,15 +1,22 @@
+﻿import { randomUUID } from 'node:crypto';
 import type { Color, Piece } from '../src/types';
 import type { ServerGameState } from './game';
 
 export interface RoomPlayer {
-  socketId: string;
+  // null = РёРіСЂРѕРє РѕС‚РєР»СЋС‡С‘РЅ (grace-РѕРєРЅРѕ) РёР»Рё РїРѕС‚РµСЂСЏРЅ РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅРѕ
+  socketId: string | null;
+  // РЎРµРєСЂРµС‚РЅС‹Р№ С‚РѕРєРµРЅ РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ СЃРµСЃСЃРёРё
+  token: string;
   color: Color;
   setup: Piece[] | null;
+  disconnectTimer: ReturnType<typeof setTimeout> | null;
+  // РњРѕРјРµРЅС‚ (epoch ms), РґРѕ РєРѕС‚РѕСЂРѕРіРѕ РґРµР№СЃС‚РІСѓРµС‚ grace-РѕРєРЅРѕ РѕС‚РєР»СЋС‡РµРЅРёСЏ
+  graceUntil: number | null;
 }
 
 export interface Room {
   code: string;
-  players: [RoomPlayer] | [RoomPlayer, RoomPlayer];
+  players: RoomPlayer[];
   game: ServerGameState | null;
 }
 
@@ -30,7 +37,14 @@ export function createRoom(socketId: string): Room {
   const code = generateCode();
   const room: Room = {
     code,
-    players: [{ socketId, color: 'white', setup: null }],
+    players: [{
+      socketId,
+      token: randomUUID(),
+      color: 'white',
+      setup: null,
+      disconnectTimer: null,
+      graceUntil: null,
+    }],
     game: null,
   };
   rooms.set(code, room);
@@ -42,7 +56,14 @@ export function joinRoom(socketId: string, code: string): Room | null {
   if (!room) return null;
   if (room.players.length >= 2) return null;
 
-  room.players.push({ socketId, color: 'black', setup: null });
+  room.players.push({
+    socketId,
+    token: randomUUID(),
+    color: 'black',
+    setup: null,
+    disconnectTimer: null,
+    graceUntil: null,
+  });
   return room;
 }
 
@@ -70,7 +91,17 @@ export function getOpponent(socketId: string): RoomPlayer | null {
 }
 
 export function removeRoom(code: string): void {
-  rooms.delete(code.toUpperCase());
+  const key = code.toUpperCase();
+  const room = rooms.get(key);
+  if (room) {
+    for (const p of room.players) {
+      if (p.disconnectTimer) {
+        clearTimeout(p.disconnectTimer);
+        p.disconnectTimer = null;
+      }
+    }
+    rooms.delete(key);
+  }
 }
 
 export function setSetup(socketId: string, pieces: Piece[]): boolean {
